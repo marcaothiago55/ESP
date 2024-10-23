@@ -1,0 +1,92 @@
+#include <ESP8266WiFi.h>         // Biblioteca para conectar o ESP8266 à rede Wi-Fi
+#include <WiFiClient.h>          // Biblioteca para gerenciar conexões Wi-Fi
+#include <ESP8266WebServer.h>    // Biblioteca para criar um servidor web no ESP8266
+
+const char *nome_da_rede = "CIDADE ILUMINADA";  // Nome da rede Wi-Fi que o ESP8266 criará
+const char *senha = "12345678";                  // Senha da rede Wi-Fi
+
+ESP8266WebServer servidor(80);  // Cria um servidor web que escuta na porta 80
+
+const int relePin = 0;  // Define o pino do relé (ajuste conforme necessário)
+
+void setup() {
+  pinMode(relePin, OUTPUT);  // Configura o pino do relé como saída
+  digitalWrite(relePin, LOW);  // Garante que a luz comece desligada
+
+  WiFi.softAP(nome_da_rede, senha);  // Configura o ESP8266 para criar um ponto de acesso Wi-Fi
+  delay(1000);  // Aguarda 1 segundo para garantir que o ponto de acesso foi configurado
+  Serial.begin(115200);  // Inicializa a comunicação serial com uma taxa de 115200 bauds
+  Serial.println("Endereço IP:");  // Imprime uma mensagem no monitor serial
+  Serial.println(WiFi.softAPIP());  // Imprime o endereço IP do ponto de acesso no monitor serial
+
+  // Configura as rotas para o servidor web
+  servidor.on("/", Pagina_Requisitada);   // Quando a raiz ("/") é acessada, chama a função Pagina_Requisitada
+  servidor.on("/ligar_luz", Ligar_Luz); // URL para ligar a luz
+  servidor.on("/desligar_luz", Desligar_Luz); // URL para desligar a luz
+  servidor.onNotFound(Pagina_Inexistente); // Quando uma URL desconhecida é acessada, chama a função Pagina_Inexistente
+  
+  servidor.begin();  // Inicia o servidor web
+}
+
+void loop() {
+  servidor.handleClient();  // Processa as requisições recebidas pelo servidor web
+}
+
+// Função chamada quando a raiz ("/") é acessada
+void Pagina_Requisitada() {
+  servidor.send(200, "text/html", Monta_HTML());  // Envia a página HTML para o cliente
+}
+
+// Função chamada quando uma URL desconhecida é acessada
+void Pagina_Inexistente() {
+  servidor.send(404, "text/html", "<H1><!DOCTYPE html><html>P&aacute;gina n&atilde;o encontrada</H1></html>");  // Envia uma mensagem de erro 404 para o cliente
+}
+
+// Função para ligar a luz
+void Ligar_Luz() {
+  digitalWrite(relePin, HIGH);  // Liga o relé
+  servidor.send(200, "text/html", Monta_HTML());  // Envia a página HTML atualizada para o cliente
+}
+
+// Função para desligar a luz
+void Desligar_Luz() {
+  digitalWrite(relePin, LOW);  // Desliga o relé
+  servidor.send(200, "text/html", Monta_HTML());  // Envia a página HTML atualizada para o cliente
+}
+
+// Função para montar a página HTML com os controles do relé
+String Monta_HTML() {
+  String ptr = "";  // String para armazenar o HTML
+  ptr += "<!DOCTYPE html><html>\n";
+  ptr += "<head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n";
+  ptr += "<title>Cidade Iluminada</title>\n";
+  ptr += "<style>\n";
+  ptr += "html { font-family: 'Courier New', monospace; display: inline-block; margin: 0px auto; text-align: center;}\n";
+  ptr += "body {margin-top: 50px; background-color: #121212; color: #f1f1f1;}\n";
+  ptr += "h1 {color: #f1f1f1; margin: 50px auto 30px;}\n";
+  ptr += "button {width: 200px; height: 60px; border: none; padding: 15px; text-align: center; text-decoration: none; display: inline-block; font-size: 16px; margin: 10px; cursor: pointer; border-radius: 12px; transition-duration: 0.4s;}\n";
+  ptr += ".btn-ligar {background-color: #28a745; color: white;}\n";  // Botão ligar luz
+  ptr += ".btn-desligar {background-color: #dc3545; color: white;}\n";  // Botão desligar luz
+  ptr += "button:hover {box-shadow: 0px 0px 15px 3px rgba(255, 255, 255, 0.5);}\n";
+  ptr += "</style>\n";
+  ptr += "<script>\n";
+  ptr += "function ligarLuz() {\n";
+  ptr += "  var xhr = new XMLHttpRequest();\n";
+  ptr += "  xhr.open('GET', '/ligar_luz', true);\n";
+  ptr += "  xhr.send();\n";
+  ptr += "}\n";
+  ptr += "function desligarLuz() {\n";
+  ptr += "  var xhr = new XMLHttpRequest();\n";
+  ptr += "  xhr.open('GET', '/desligar_luz', true);\n";
+  ptr += "  xhr.send();\n";
+  ptr += "}\n";
+  ptr += "</script>\n";
+  ptr += "</head>\n";
+  ptr += "<body>\n";
+  ptr += "<h1>Cidade Iluminada</h1>\n";
+  ptr += "<button class=\"btn-ligar\" onclick=\"ligarLuz()\">Ligar Luz</button>\n";
+  ptr += "<button class=\"btn-desligar\" onclick=\"desligarLuz()\">Desligar Luz</button>\n";
+  ptr += "</body>\n";
+  ptr += "</html>\n";
+  return ptr;  // Retorna a string HTML montada
+}
