@@ -1,0 +1,134 @@
+#include <ESP8266WiFi.h>         // Biblioteca para conectar o ESP8266 à rede Wi-Fi
+#include <WiFiClient.h>          // Biblioteca para gerenciar conexões Wi-Fi
+#include <ESP8266WebServer.h>    // Biblioteca para criar um servidor web no ESP8266
+#include "DHT.h"                 // Biblioteca para interagir com o sensor DHT
+
+#define Modelo DHT11             // Define o modelo do sensor DHT como DHT11
+
+const char *nome_da_rede = "ESTUFA INTELIGENTE";  // Nome da rede Wi-Fi que o ESP8266 criará
+const char *senha = "12345678";                  // Senha da rede Wi-Fi
+
+ESP8266WebServer servidor(80);  // Cria um servidor web que escuta na porta 80
+
+uint8_t Pino_Sensor = 2;        // Define o pino onde o sensor DHT está conectado
+DHT dht(Pino_Sensor, Modelo);   // Cria uma instância do sensor DHT
+
+float Temp;  // Variável para armazenar a temperatura lida
+float Umid;  // Variável para armazenar a umidade lida
+
+// Função chamada uma vez quando o microcontrolador é ligado ou resetado
+void setup() {
+  pinMode(Pino_Sensor, INPUT);  // Define o pino do sensor como entrada
+  pinMode(0, OUTPUT);           // Define o pino GPIO 0 (D3) como saída para controlar o relé
+  digitalWrite(0, LOW);         // Inicialmente desliga o relé
+
+  dht.begin();                  // Inicializa o sensor DHT
+  WiFi.softAP(nome_da_rede, senha);  // Configura o ESP8266 para criar um ponto de acesso Wi-Fi com o nome e senha fornecidos
+  delay(1000);                  // Aguarda 1 segundo para garantir que o ponto de acesso foi configurado
+  Serial.begin(115200);         // Inicializa a comunicação serial com uma taxa de 115200 bauds
+  Serial.println("Endereço IP:"); // Imprime uma mensagem no monitor serial
+  Serial.println(WiFi.softAPIP()); // Imprime o endereço IP do ponto de acesso no monitor serial
+
+  // Configura as rotas para o servidor web
+  servidor.on("/", Pagina_Requisitada);   // Quando a raiz ("/") é acessada, chama a função Pagina_Requisitada
+  servidor.on("/ligar", Ligar_Rele);     // Quando a URL "/ligar" é acessada, chama a função Ligar_Rele
+  servidor.on("/desligar", Desligar_Rele); // Quando a URL "/desligar" é acessada, chama a função Desligar_Rele
+  servidor.onNotFound(Pagina_Inexistente); // Quando uma URL desconhecida é acessada, chama a função Pagina_Inexistente
+  
+  servidor.begin();  // Inicia o servidor web
+}
+
+// Função chamada repetidamente enquanto o microcontrolador está ligado
+void loop() {
+  servidor.handleClient();  // Processa as requisições recebidas pelo servidor web
+}
+
+// Função chamada quando a URL "/ligar" é acessada
+void Ligar_Rele() {
+  digitalWrite(0, HIGH);  // Liga o relé
+  servidor.send(200, "text/html", Monta_HTML(Temp, Umid));  // Envia a página HTML atualizada para o cliente
+}
+
+// Função chamada quando a URL "/desligar" é acessada
+void Desligar_Rele() {
+  digitalWrite(0, LOW);  // Desliga o relé
+  servidor.send(200, "text/html", Monta_HTML(Temp, Umid));  // Envia a página HTML atualizada para o cliente
+}
+
+// Função chamada quando a raiz ("/") é acessada
+void Pagina_Requisitada() {
+  Temp = dht.readTemperature();  // Lê a temperatura do sensor DHT
+  Umid = dht.readHumidity();     // Lê a umidade do sensor DHT
+  
+  // Verifica se a leitura do sensor falhou
+  if (isnan(Temp) || isnan(Umid)) {
+    Serial.println("Falha ao ler dados do sensor DHT!");  // Imprime uma mensagem de erro no monitor serial
+    Temp = 0;  // Define a temperatura como 0 em caso de erro
+    Umid = 0;  // Define a umidade como 0 em caso de erro
+  }
+  
+  servidor.send(200, "text/html", Monta_HTML(Temp, Umid));  // Envia a página HTML com os dados do sensor para o cliente
+}
+
+// Função chamada quando uma URL desconhecida é acessada
+void Pagina_Inexistente() {
+  servidor.send(404, "text/html", "<H1><!DOCTYPE html><html>P&aacute;gina n&atilde;o encontrada</H1></html>");  // Envia uma mensagem de erro 404 para o cliente
+}
+
+// Função para montar a página HTML com os dados do sensor e controles
+String Monta_HTML(float temp, float umid) {
+  String ptr = "";  // String para armazenar o HTML
+  ptr += "<!DOCTYPE html><html>\n";
+  ptr += "<head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n";
+  ptr += "<title>ESTUFA DARLEI ADAD</title>\n";
+  ptr += "<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}\n";
+  ptr += "body{margin-top: 50px; background: #0074D9;} h1 {color: #444444;margin: 50px auto 30px;}\n";  // Define o estilo da página
+  ptr += "p {font-size: 24px;color: #444444;margin-bottom: 10px;}</style>\n";
+  ptr += "<script>\n";
+  ptr += "function atualizarHora() {\n";
+  ptr += "  var data = new Date();\n";
+  ptr += "  var dia = data.getDate();\n";
+  ptr += "  var mes = data.getMonth() + 1;\n";
+  ptr += "  var ano = data.getFullYear();\n";
+  ptr += "  var hora = data.getHours();\n";
+  ptr += "  var minutos = data.getMinutes();\n";
+  ptr += "  var segundos = data.getSeconds();\n";
+  ptr += "  dia = dia < 10 ? '0' + dia : dia;\n";
+  ptr += "  mes = mes < 10 ? '0' + mes : mes;\n";
+  ptr += "  hora = hora < 10 ? '0' + hora : hora;\n";
+  ptr += "  minutos = minutos < 10 ? '0' + minutos : minutos;\n";
+  ptr += "  segundos = segundos < 10 ? '0' + segundos : segundos;\n";
+  ptr += "  document.getElementById('data-hora-atual').innerHTML = dia + '/' + mes + '/' + ano + ' ' + hora + \":\" + minutos + \":\" + segundos;\n";
+  ptr += "}\n";
+  ptr += "setInterval(atualizarHora, 1000);\n";  // Atualiza o horário a cada segundo
+  ptr += "window.onload = atualizarHora;\n";
+  ptr += "function ligarRele() {\n";
+  ptr += "  var xhr = new XMLHttpRequest();\n";
+  ptr += "  xhr.open('GET', '/ligar', true);\n";
+  ptr += "  xhr.send();\n";
+  ptr += "}\n";
+  ptr += "function desligarRele() {\n";
+  ptr += "  var xhr = new XMLHttpRequest();\n";
+  ptr += "  xhr.open('GET', '/desligar', true);\n";
+  ptr += "  xhr.send();\n";
+  ptr += "}\n";
+  ptr += "</script>\n";
+  ptr += "</head>\n";
+  ptr += "<body>\n";
+  ptr += "<div id=\"webpage\">\n";
+  ptr += "<h1>ESTUFA INTELIGENTE</h1>\n";
+  ptr += "<h2>🌀🌱 ESTUFA DARLEI ADAD 🌱🌀</h2>\n";
+  ptr += "<p>&#127777; Temperatura: ";
+  ptr += String(temp, 1);  // Adiciona a temperatura ao HTML
+  ptr += "°C</p>";
+  ptr += "<p>&#x1F4A7; Umidade: ";
+  ptr += String(umid, 0);  // Adiciona a umidade ao HTML
+  ptr += "%</p>";
+  ptr += "<p id=\"data-hora-atual\"></p>\n";
+  ptr += "<button onclick=\"ligarRele()\">Ligar Ventoinha</button>\n";  // Botão para ligar o relé
+  ptr += "<button onclick=\"desligarRele()\">Desligar Ventoinha</button>\n";  // Botão para desligar o relé
+  ptr += "</div>\n";
+  ptr += "</body>\n";
+  ptr += "</html>\n";
+  return ptr;
+}
